@@ -281,6 +281,12 @@ function viewStudent(){
       + (m ? '<span class="badge">처음 점수 ' + m.score + ' / ' + s.count + '</span>' + (m.done ? '<span class="badge">틀린 문제 복습 끝</span>' : '<span class="badge warn">틀린 문제가 남았어요</span>') : '') + '</span></div>'
       + '<button class="btn primary" data-act="start" data-id="' + esc(s.id) + '">' + (m ? '다시 풀기' : '시작') + '</button></div></div>';
   });
+  h += '</section>';
+  h += '<section class="panel stack"><div class="row spread"><h2>내 기록</h2><button class="btn small" data-act="myhist">' + (state.myHist ? '닫기' : '지금까지 푼 기록 보기') + '</button></div>';
+  if (state.myHist){
+    if (!state.myHist.length) h += '<p class="muted">아직 푼 기록이 없어요.</p>';
+    else h += '<div class="scroll"><table><thead><tr><th>날짜</th><th>문제</th><th>방식</th><th>점수</th></tr></thead><tbody>' + state.myHist.slice().reverse().map(histRow).join('') + '</tbody></table></div>';
+  }
   return h + '</section>';
 }
 function viewTeacher(){
@@ -303,7 +309,7 @@ function viewTeacher(){
   if (!T.sets) return '<section class="panel"><p class="muted">불러오는 중…</p></section>';
   var h = '';
   if (T.live) h += '<div class="live-banner row spread"><b>실시간 퀴즈가 열려 있어요: ' + esc(T.live.title) + '</b><button class="btn" data-act="hresume">진행 화면으로</button></div>';
-  h += '<section class="panel"><div class="row spread"><h2>' + esc(T.className) + ' 문제 세트</h2><button class="btn small ghost" data-act="logout">로그아웃</button></div>'
+  h += '<section class="panel"><div class="row spread"><h2>' + esc(T.className) + ' 문제 세트</h2><span class="row"><button class="btn small" data-act="thist">누적 기록</button><button class="btn small ghost" data-act="logout">로그아웃</button></span></div>'
     + '<div class="row" style="padding-top:8px"><label class="muted" for="live-limit">실시간 퀴즈 한 문제 시간</label><select class="sel" id="live-limit">'
     + [10, 20, 30, 60, 90].map(function(n){ return '<option value="' + n + '"' + (n === (state.limit || 20) ? ' selected' : '') + '>' + n + '초</option>'; }).join('') + '</select></div>';
   if (!T.sets.length) h += '<p class="muted" style="padding-top:10px">아직 세트가 없어요. 아래에 만들기 도구에서 복사한 내용을 붙여 넣어 첫 세트를 올려 보세요.</p>';
@@ -366,6 +372,57 @@ function viewTResults(){
   });
   h += '</tbody></table></div><p class="muted">이름을 잘못 쓴 기록은 지우고 다시 풀게 하면 됩니다.</p></section>';
   return h;
+}
+/* ---------- 누적 기록 ---------- */
+function when(at){ var d = new Date(at); if (isNaN(d)) return ''; return d.getFullYear() + '.' + (d.getMonth() + 1) + '.' + d.getDate() + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+function pct(score, count){ return count ? Math.round(score / count * 100) : 0; }
+function modeName(m){ return m === 'live' ? '실시간 퀴즈' : '혼자 풀기'; }
+function histRow(r){ return '<tr><td>' + esc(when(r.at)) + '</td><td class="wrap">' + esc(r.title) + '</td><td>' + modeName(r.mode) + '</td><td>' + r.score + ' / ' + r.count + ' (' + pct(r.score, r.count) + '%)</td></tr>'; }
+function histStudents(list){
+  var map = {}, out = [];
+  list.forEach(function(r){
+    var k = r.num + '|' + r.name, o = map[k];
+    if (!o){ o = map[k] = { key: k, num: r.num, name: r.name, rows: [] }; out.push(o); }
+    o.rows.push(r);
+  });
+  out.forEach(function(o){
+    o.rows.sort(function(a, b){ return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; });
+    var sc = 0, ct = 0; o.rows.forEach(function(r){ sc += r.score; ct += r.count; });
+    o.avg = pct(sc, ct); o.firstPct = pct(o.rows[0].score, o.rows[0].count);
+    var l = o.rows[o.rows.length - 1]; o.lastPct = pct(l.score, l.count); o.lastAt = l.at;
+  });
+  return out.sort(function(a, b){ return a.num - b.num || (a.name < b.name ? -1 : 1); });
+}
+function viewTHistory(){
+  var list = state.hist || [], st = histStudents(list), sc = 0, ct = 0;
+  list.forEach(function(r){ sc += r.score; ct += r.count; });
+  var h = '<div class="topbar"><button class="btn small ghost" data-act="home">목록으로</button><button class="btn small" data-act="thist">새로 고침</button></div>'
+    + '<header><h1>누적 기록</h1><p class="muted">학생이 풀 때마다(혼자 풀기·실시간 퀴즈) 그때의 점수가 한 줄씩 쌓여요. 세트를 지워도 이 기록은 남습니다.</p></header>';
+  h += '<div class="stats"><div class="stat"><b>' + list.length + '번</b><span class="muted">쌓인 기록</span></div>'
+    + '<div class="stat"><b>' + st.length + '명</b><span class="muted">학생</span></div>'
+    + '<div class="stat"><b>' + (ct ? pct(sc, ct) + '%' : '-') + '</b><span class="muted">전체 정답률</span></div></div>';
+  if (!list.length) return h + '<section class="panel"><p class="muted">아직 쌓인 기록이 없어요. 이 기능이 생긴 뒤에 푼 것부터 쌓입니다.</p></section>';
+  h += '<section class="panel stack"><div class="row spread"><h2>학생별 기록</h2><button class="btn small" data-act="htsv">전체 기록 복사 (엑셀·시트용)</button></div>'
+    + '<div class="scroll"><table><thead><tr><th>번호</th><th>이름</th><th>푼 횟수</th><th>평균 정답률</th><th>처음 → 최근</th><th>최근 푼 날</th><th></th></tr></thead><tbody>';
+  st.forEach(function(o){
+    var open = state.histOpen === o.key;
+    h += '<tr><td>' + o.num + '</td><td>' + esc(o.name) + '</td><td>' + o.rows.length + '번</td><td>' + o.avg + '%</td><td>' + o.firstPct + '% → ' + o.lastPct + '%</td><td>' + esc(when(o.lastAt)) + '</td>'
+      + '<td><button class="btn small" data-act="hopen" data-key="' + esc(o.key) + '" aria-expanded="' + open + '">' + (open ? '접기' : '자세히') + '</button></td></tr>';
+    if (open) h += '<tr><td colspan="7"><div class="scroll"><table><thead><tr><th>날짜</th><th>문제</th><th>방식</th><th>점수</th></tr></thead><tbody>' + o.rows.slice().reverse().map(histRow).join('') + '</tbody></table></div></td></tr>';
+  });
+  h += '</tbody></table></div></section>';
+  var sets = {}, order = [];
+  list.forEach(function(r){ var o = sets[r.setId]; if (!o){ o = sets[r.setId] = { title: r.title, n: 0, sc: 0, ct: 0, last: '' }; order.push(o); } o.n++; o.sc += r.score; o.ct += r.count; if (r.at > o.last){ o.last = r.at; o.title = r.title; } });
+  h += '<section class="panel stack"><h2>세트별 기록</h2><div class="scroll"><table><thead><tr><th>문제 세트</th><th>푼 횟수</th><th>평균 정답률</th><th>최근 푼 날</th></tr></thead><tbody>'
+    + order.map(function(o){ return '<tr><td class="wrap">' + esc(o.title) + '</td><td>' + o.n + '번</td><td>' + pct(o.sc, o.ct) + '%</td><td>' + esc(when(o.last)) + '</td></tr>'; }).join('') + '</tbody></table></div></section>';
+  return h;
+}
+function buildHistTsv(){
+  var lines = [['날짜', '번호', '이름', '문제 세트', '방식', '점수', '문항 수', '정답률(%)', '틀린 문제'].join('\t')];
+  (state.hist || []).forEach(function(r){
+    lines.push([when(r.at), r.num, r.name, r.title, modeName(r.mode), r.score, r.count, pct(r.score, r.count), wrongNums(r).join(' ')].join('\t'));
+  });
+  return lines.join('\n');
 }
 function buildTsv(){
   var a = aggregate(), head = ['번호', '이름', '처음 점수', '문항 수', '틀린 문제', '복습 끝냄', '푼 횟수'];
@@ -666,15 +723,16 @@ function viewResult(){
 /* ---------- 그리기·이벤트 ---------- */
 function render(){
   var v = state.view;
-  app.className = v === 'tresults' || v === 'review' ? 'wide' : v === 'host' ? 'full' : '';
-  app.innerHTML = v === 'play' ? viewPlay() : v === 'result' ? viewResult() : v === 'tresults' ? viewTResults() : v === 'review' ? viewReview() : v === 'host' ? viewHost() : v === 'live' ? viewLive() : viewHome();
+  app.className = v === 'tresults' || v === 'review' || v === 'thistory' ? 'wide' : v === 'host' ? 'full' : '';
+  app.innerHTML = v === 'play' ? viewPlay() : v === 'result' ? viewResult() : v === 'tresults' ? viewTResults() : v === 'thistory' ? viewTHistory() : v === 'review' ? viewReview() : v === 'host' ? viewHost() : v === 'live' ? viewLive() : viewHome();
   if (v === 'live'){ var li = document.getElementById('live-answer'); if (li) li.focus({ preventScroll: true }); }
   if (v === 'play' && !state.play.back){ var inp = document.getElementById('short-answer'); if (inp) inp.focus({ preventScroll: true }); }
 }
 function applyOverview(o){ T.sets = o.sets; T.className = o.className; T.live = o.live || null; if (state.status) state.status.className = o.className; }
 async function refreshStudent(){ if (!ONLINE || !me) return; state.cls = await api('listSets', { num: me.num, name: me.name }); }
 function goHome(){
-  var wasTeacher = state.view === 'tresults' || state.view === 'host' || (state.view !== 'live' && state.play && state.play.preview);
+  state.myHist = null;
+  var wasTeacher = state.view === 'tresults' || state.view === 'thistory' || state.view === 'host' || (state.view !== 'live' && state.play && state.play.preview);
   state.view = 'home'; state.confirmQuit = false; state.confirmDel = null; render(); window.scrollTo(0, 0);
   if (wasTeacher && T) run(async function(){ applyOverview(await api('overview', { token: T.token })); render(); });
   else run(async function(){ await refreshStudent(); render(); });
@@ -734,7 +792,7 @@ app.addEventListener('click', function(ev){
     goHome();
   }
   else if (act === 'sample'){ startPlay(SAMPLE, { preview: true }); }
-  else if (act === 'leave'){ me = null; lsSet('qc.me', null); state.cls = null; render(); }
+  else if (act === 'leave'){ state.myHist = null; me = null; lsSet('qc.me', null); state.cls = null; render(); }
   else if (act === 'start'){ run(async function(){ var r = await api('loadSet', { setId: id }); startPlay(r.set, { setId: id }); }); }
   else if (act === 'logout'){ T = null; ssSet('qc.token', ''); render(); }
   else if (act === 'preview'){ run(async function(){ var r = await api('getSet', { token: T.token, setId: id }); startPlay(r.set, { preview: true }); }); }
@@ -754,6 +812,13 @@ app.addEventListener('click', function(ev){
       state.tr.list = state.tr.list.filter(function(r){ return !(String(r.num) === t.dataset.num && r.name === t.dataset.name); });
       render(); toast('지웠어요.');
     });
+  }
+  else if (act === 'thist'){ run(async function(){ var r = await api('history', { token: T.token }); state.hist = r.list; state.view = 'thistory'; render(); }); }
+  else if (act === 'hopen'){ state.histOpen = state.histOpen === t.dataset.key ? null : t.dataset.key; render(); }
+  else if (act === 'htsv'){ copyText(buildHistTsv(), '복사했어요. 엑셀이나 구글 시트에 붙여 넣으세요.'); }
+  else if (act === 'myhist'){
+    if (state.myHist){ state.myHist = null; render(); }
+    else run(async function(){ var r = await api('myHistory', { num: me.num, name: me.name }); state.myHist = r.list; render(); });
   }
   else if (act === 'tsv'){ copyText(buildTsv(), '복사했어요. 엑셀이나 구글 시트에 붙여 넣으세요.'); }
   else if (act === 'review'){ state.review = { agg: aggregate(), pos: 0, show: false }; state.view = 'review'; render(); window.scrollTo(0, 0); }
